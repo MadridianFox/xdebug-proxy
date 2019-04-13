@@ -1,0 +1,12 @@
+version: '3'
+services:
+  server:
+    build:
+      dockerfile: server.dockerfile
+      context: .
+    ports: ["80:80"]
+  proxy:
+    build:
+      dockerfile: docker/proxy.dockerfile
+      context: ../
+    ports: ["9001:9001"]
