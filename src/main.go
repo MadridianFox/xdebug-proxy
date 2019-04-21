@@ -19,6 +19,8 @@ func main() {
 	registryArgPtr := flag.String("registry", "0.0.0.0:9001", "ip:port for registry connections")
 	flag.Parse()
 
+	storage := NewClientList()
+
 	// start registry
 	registryAddress, err := net.ResolveTCPAddr("tcp", *registryArgPtr)
 	if err != nil {
@@ -26,7 +28,7 @@ func main() {
 	}
 	//registry := NewProxyRegistry(registryAddress)
 	registryServer := NewServer("registry", registryAddress, tasks)
-	registryHandler := &RegistryHandler{RegistryClients{}}
+	registryHandler := &RegistryHandler{storage}
 	go registryServer.listen(registryHandler)
 
 	// start pipe
@@ -35,7 +37,7 @@ func main() {
 		log.Fatal(err)
 	}
 	proxyServer := NewServer("proxy", pipeAddress, tasks)
-	proxyHandler := &ProxyHandler{&registryHandler.clients}
+	proxyHandler := &ProxyHandler{storage}
 	go proxyServer.listen(proxyHandler)
 
 	// wait os signals

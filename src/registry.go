@@ -19,31 +19,8 @@ type ProxyXmlMessage struct {
 	Error   string `xml:"error>message"`
 }
 
-type RegistryClient struct {
-	address string
-	port    string
-	idekey  string
-}
-
-func (client *RegistryClient) fullAddress() string {
-	return net.JoinHostPort(client.address, client.port)
-}
-
-type RegistryClients map[string]RegistryClient
-
-func (registry *RegistryHandler) hasClientWithPort(port string) bool {
-	var portInUse bool
-	for _, client := range registry.clients {
-		if client.port == port {
-			portInUse = true
-			break
-		}
-	}
-	return portInUse
-}
-
 type RegistryHandler struct {
-	clients RegistryClients
+	clients *ClientList
 }
 
 func (registry *RegistryHandler) Handle(conn net.Conn) {
@@ -115,7 +92,7 @@ func (registry *RegistryHandler) processMessage(message string, conn net.Conn) e
 			_ = registry.sendMessage(conn, command, idekey, "Can't parse port.")
 			return err
 		}
-		if registry.hasClientWithPort(port) {
+		if registry.clients.HasClientWithPort(port) {
 			_ = registry.sendMessage(conn, command, idekey, fmt.Sprintf(`Port "%s" already in use.`, port))
 			return nil
 		}
@@ -124,16 +101,12 @@ func (registry *RegistryHandler) processMessage(message string, conn net.Conn) e
 			_ = registry.sendMessage(conn, command, idekey, "Internal error.")
 			return err
 		}
-		registry.clients[idekey] = RegistryClient{
-			idekey:  idekey,
-			address: host,
-			port:    port,
-		}
+		registry.clients.AddClient(&DbgpClient{idekey: idekey, address: host, port: port})
 		log.Println(fmt.Sprintf(`add client with host "%s", port "%s" and idekey "%s"`, host, port, idekey))
 	} else if command == "proxystop" {
-		_, ok := registry.clients[idekey]
+		_, ok := registry.clients.FindClient(idekey)
 		if ok {
-			delete(registry.clients, idekey)
+			registry.clients.DeleteClient(idekey)
 			log.Println(fmt.Sprintf(`delete client with idekey "%s"`, idekey))
 		} else {
 			log.Println(fmt.Sprintf(`attempt to delete idekey "%s"`, idekey))

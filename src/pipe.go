@@ -11,7 +11,7 @@ import (
 )
 
 type ProxyHandler struct {
-	clients *RegistryClients
+	clients *ClientList
 }
 
 func (proxy *ProxyHandler) Handle(conn net.Conn) {
@@ -40,7 +40,7 @@ func (proxy *ProxyHandler) Handle(conn net.Conn) {
 }
 
 func (proxy *ProxyHandler) sendAndPipe(server net.Conn, idekey string, initMessage []byte) error {
-	clientAddress, ok := (*proxy.clients)[idekey]
+	clientAddress, ok := proxy.clients.FindClient(idekey)
 	if !ok {
 		return errors.New(`client with idekey "` + idekey + `" isn't registered`)
 	}
