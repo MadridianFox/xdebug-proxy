@@ -24,22 +24,25 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	registry := NewProxyRegistry(registryAddress)
-	go registry.listen(tasks)
+	//registry := NewProxyRegistry(registryAddress)
+	registryServer := NewServer("registry", registryAddress, tasks)
+	registryHandler := &RegistryHandler{RegistryClients{}}
+	go registryServer.listen(registryHandler)
 
 	// start pipe
 	pipeAddress, err := net.ResolveTCPAddr("tcp", *xdebugArgPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	pipe := NewPipe(pipeAddress, &registry.clients)
-	go pipe.listen(tasks)
+	proxyServer := NewServer("proxy", pipeAddress, tasks)
+	proxyHandler := &ProxyHandler{&registryHandler.clients}
+	go proxyServer.listen(proxyHandler)
 
 	// wait os signals
 	<-signals
 	log.Println("signal Ctrl+C")
-	pipe.stopping = true
-	registry.stopping = true
+	proxyServer.stop = true
+	registryServer.stop = true
 	tasks.Wait()
 	log.Println("dbgp proxy stopped")
 }

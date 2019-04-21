@@ -10,8 +10,6 @@ import (
 	"log"
 	"net"
 	"regexp"
-	"sync"
-	"time"
 )
 
 type ProxyXmlMessage struct {
@@ -33,21 +31,7 @@ func (client *RegistryClient) fullAddress() string {
 
 type RegistryClients map[string]RegistryClient
 
-type ProxyRegistry struct {
-	address  *net.TCPAddr
-	clients  RegistryClients
-	stopping bool
-}
-
-func NewProxyRegistry(address *net.TCPAddr) *ProxyRegistry {
-	return &ProxyRegistry{
-		address,
-		RegistryClients{},
-		false,
-	}
-}
-
-func (registry *ProxyRegistry) hasClientWithPort(port string) bool {
+func (registry *RegistryHandler) hasClientWithPort(port string) bool {
 	var portInUse bool
 	for _, client := range registry.clients {
 		if client.port == port {
@@ -58,40 +42,14 @@ func (registry *ProxyRegistry) hasClientWithPort(port string) bool {
 	return portInUse
 }
 
-func (registry *ProxyRegistry) listen(tasks *sync.WaitGroup) {
-	tasks.Add(1)
-	defer tasks.Done()
-	socket, err := net.ListenTCP("tcp", registry.address)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer CloseOrFatal(socket)
-	log.Printf(`listen registry connections on %s`, registry.address.String())
-	for {
-		if registry.stopping {
-			break
-		}
-		_ = socket.SetDeadline(time.Now().Add(time.Second * 2))
-		conn, err := socket.Accept()
-		if err != nil {
-			if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
-				continue
-			}
-			log.Print(err)
-			continue
-		}
-		go registry.handleConnection(conn, tasks)
-	}
-	log.Println("shutdown registry listener")
+type RegistryHandler struct {
+	clients RegistryClients
 }
 
-func (registry *ProxyRegistry) handleConnection(conn net.Conn, tasks *sync.WaitGroup) {
-	defer CloseOrLog(conn)
-	tasks.Add(1)
-	defer tasks.Done()
-	r := bufio.NewReader(conn)
+func (registry *RegistryHandler) Handle(conn net.Conn) {
+	reader := bufio.NewReader(conn)
 	log.Println("new registry connection")
-	data, err := r.ReadBytes(0)
+	data, err := reader.ReadBytes(0)
 	if err != nil {
 		if err != io.EOF {
 			log.Print(err)
@@ -116,7 +74,7 @@ func extractByRegexp(pattern string, data string) (string, error) {
 	return groups[1], nil
 }
 
-func (registry *ProxyRegistry) sendMessage(conn net.Conn, messageType string, idekey string, error string) error {
+func (registry *RegistryHandler) sendMessage(conn net.Conn, messageType string, idekey string, error string) error {
 	var success int8
 	if error == "" {
 		success = 1
@@ -140,7 +98,7 @@ func (registry *ProxyRegistry) sendMessage(conn net.Conn, messageType string, id
 	return nil
 }
 
-func (registry *ProxyRegistry) processMessage(message string, conn net.Conn) error {
+func (registry *RegistryHandler) processMessage(message string, conn net.Conn) error {
 	command, err := extractByRegexp(`^([^\s]+)`, message)
 	if err != nil {
 		_ = registry.sendMessage(conn, command, "", "Can't parse command.")

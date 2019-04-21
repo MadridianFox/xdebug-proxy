@@ -7,66 +7,22 @@ import (
 	"io"
 	"log"
 	"net"
-	"sync"
 	"time"
 )
 
-type ProxyPipe struct {
-	address  *net.TCPAddr
-	clients  *RegistryClients
-	stopping bool
+type ProxyHandler struct {
+	clients *RegistryClients
 }
 
-func NewPipe(address *net.TCPAddr, clients *RegistryClients) *ProxyPipe {
-	return &ProxyPipe{
-		address,
-		clients,
-		false,
-	}
-}
-
-func (proxy *ProxyPipe) listen(tasks *sync.WaitGroup) {
-	tasks.Add(1)
-	defer tasks.Done()
-	socket, err := net.ListenTCP("tcp", proxy.address)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer CloseOrFatal(socket)
-	log.Printf(`listen xdebug connections on %s`, proxy.address.String())
-	for {
-		if proxy.stopping {
-			break
-		}
-		_ = socket.SetDeadline(time.Now().Add(time.Second * 2))
-		conn, err := socket.Accept()
-		if err != nil {
-			if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
-				continue
-			}
-			log.Print(err)
-			continue
-		}
-		go proxy.handleConnection(conn, tasks)
-	}
-
-	log.Println("shutdown xdebug listener")
-}
-
-func (proxy *ProxyPipe) handleConnection(conn net.Conn, tasks *sync.WaitGroup) {
-	defer CloseOrLog(conn)
-	tasks.Add(1)
-	defer tasks.Done()
-	r := bufio.NewReader(conn)
-	log.Println("new xdebug connection")
-
-	length, err := r.ReadBytes(0)
+func (proxy *ProxyHandler) Handle(conn net.Conn) {
+	reader := bufio.NewReader(conn)
+	length, err := reader.ReadBytes(0)
 	if err != nil {
 		if err != io.EOF {
 			log.Print(err)
 		}
 	}
-	message, err := r.ReadBytes(0)
+	message, err := reader.ReadBytes(0)
 	if err != nil {
 		if err != io.EOF {
 			log.Print(err)
@@ -81,16 +37,15 @@ func (proxy *ProxyPipe) handleConnection(conn net.Conn, tasks *sync.WaitGroup) {
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println("connection closed")
 }
 
-func (proxy *ProxyPipe) sendAndPipe(server net.Conn, idekey string, initMessage []byte) error {
-	client_address, ok := (*proxy.clients)[idekey]
+func (proxy *ProxyHandler) sendAndPipe(server net.Conn, idekey string, initMessage []byte) error {
+	clientAddress, ok := (*proxy.clients)[idekey]
 	if !ok {
 		return errors.New(`client with idekey "` + idekey + `" isn't registered`)
 	}
-	log.Printf("send init packet to: %s\n", client_address.fullAddress())
-	client, err := net.Dial("tcp", client_address.fullAddress())
+	log.Printf("send init packet to: %s\n", clientAddress.fullAddress())
+	client, err := net.Dial("tcp", clientAddress.fullAddress())
 	defer CloseOrLog(client)
 	if err != nil {
 		return err
