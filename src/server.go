@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -36,7 +37,7 @@ func (server *Server) listen(handler ServerHandler) {
 		log.Fatal(err)
 	}
 	defer CloseOrFatal(socket)
-	log.Printf(`start %s server on %s\n`, server.name, server.address)
+	log.Printf(`start %s server on %s`, server.name, server.address)
 
 	for {
 		if server.stop {
@@ -53,7 +54,7 @@ func (server *Server) listen(handler ServerHandler) {
 		}
 		go server.handleConnection(conn, handler)
 	}
-	log.Printf(`shutdown %s server\n`, server.name)
+	log.Printf(`shutdown %s server`, server.name)
 }
 
 func (server *Server) handleConnection(conn net.Conn, handler ServerHandler) {
@@ -63,4 +64,18 @@ func (server *Server) handleConnection(conn net.Conn, handler ServerHandler) {
 	log.Printf(`start new connection on %s from %s`, server.name, conn.RemoteAddr())
 	handler.Handle(conn)
 	log.Printf(`close connection on %s from %s`, server.name, conn.RemoteAddr())
+}
+
+func CloseOrFatal(closer io.Closer) {
+	err := closer.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func CloseOrLog(closer io.Closer) {
+	err := closer.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 }

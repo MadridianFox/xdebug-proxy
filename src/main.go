@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-	log.Println("dbgp proxy started")
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 	tasks := &sync.WaitGroup{}
@@ -26,7 +25,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//registry := NewProxyRegistry(registryAddress)
 	registryServer := NewServer("registry", registryAddress, tasks)
 	registryHandler := &RegistryHandler{storage}
 	go registryServer.listen(registryHandler)
@@ -40,6 +38,7 @@ func main() {
 	proxyHandler := &ProxyHandler{storage}
 	go proxyServer.listen(proxyHandler)
 
+	log.Println("dbgp proxy started")
 	// wait os signals
 	<-signals
 	log.Println("signal Ctrl+C")

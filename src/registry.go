@@ -3,21 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"regexp"
 )
-
-type ProxyXmlMessage struct {
-	XMLName xml.Name
-	Success int8   `xml:"success,attr"`
-	Idekey  string `xml:"idekey,attr"`
-	Error   string `xml:"error>message"`
-}
 
 type RegistryHandler struct {
 	clients *ClientList
@@ -39,87 +30,57 @@ func (registry *RegistryHandler) Handle(conn net.Conn) {
 	}
 }
 
-func extractByRegexp(pattern string, data string) (string, error) {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return "", err
-	}
-	groups := re.FindStringSubmatch(data)
-	if len(groups) < 2 {
-		return "", errors.New(fmt.Sprintf(`no groups matched in "%s" by pattern "%s"`, data, pattern))
-	}
-	return groups[1], nil
-}
-
 func (registry *RegistryHandler) sendMessage(conn net.Conn, messageType string, idekey string, error string) error {
-	var success int8
-	if error == "" {
-		success = 1
-	} else {
-		success = 0
-	}
-	message := ProxyXmlMessage{
-		XMLName: xml.Name{Local: messageType},
-		Success: success,
-		Idekey:  idekey,
-		Error:   error,
-	}
-	xmlMessage, err := xml.Marshal(message)
+	message, err := CreateInitMessage(messageType, idekey, error)
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(conn, bytes.NewReader(xmlMessage))
+	_, err = io.Copy(conn, bytes.NewReader(message))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
+func (registry *RegistryHandler) prepareErrorMessage(conn net.Conn, command *IdeCommand) func(message string) {
+	return func(messge string) {
+		_ = registry.sendMessage(conn, command.Name, command.Idekey, messge)
+	}
+}
+
+//noinspection GoNilness
 func (registry *RegistryHandler) processMessage(message string, conn net.Conn) error {
-	command, err := extractByRegexp(`^([^\s]+)`, message)
+	command, err := ParseIdeCommand(message)
+	report := registry.prepareErrorMessage(conn, command)
 	if err != nil {
-		_ = registry.sendMessage(conn, command, "", "Can't parse command.")
-		return err
+		report("invalid command")
 	}
-	idekey, err := extractByRegexp(`-k ([^\s]+)`, message)
-	if err != nil {
-		_ = registry.sendMessage(conn, command, idekey, "Can't parse idekey.")
-		return err
-	}
-	if command == "proxyinit" {
-		port, err := extractByRegexp(`-p ([^\s]+)`, message)
-		if err != nil {
-			_ = registry.sendMessage(conn, command, idekey, "Can't parse port.")
-			return err
-		}
-		if registry.clients.HasClientWithPort(port) {
-			_ = registry.sendMessage(conn, command, idekey, fmt.Sprintf(`Port "%s" already in use.`, port))
+	if command.Name == CommandInit {
+		if registry.clients.HasClientWithPort(command.Port) {
+			report(fmt.Sprintf(`port "%s" already in use.`, command.Port))
 			return nil
 		}
 		host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
 		if err != nil {
-			_ = registry.sendMessage(conn, command, idekey, "Internal error.")
+			report("internal error.")
 			return err
 		}
-		registry.clients.AddClient(&DbgpClient{idekey: idekey, address: host, port: port})
-		log.Println(fmt.Sprintf(`add client with host "%s", port "%s" and idekey "%s"`, host, port, idekey))
-	} else if command == "proxystop" {
-		_, ok := registry.clients.FindClient(idekey)
+		registry.clients.AddClient(&DbgpClient{idekey: command.Idekey, address: host, port: command.Port})
+		log.Println(fmt.Sprintf(`add client with host "%s", port "%s" and idekey "%s"`, host, command.Port, command.Idekey))
+	} else if command.Name == CommandStop {
+		_, ok := registry.clients.FindClient(command.Idekey)
 		if ok {
-			registry.clients.DeleteClient(idekey)
-			log.Println(fmt.Sprintf(`delete client with idekey "%s"`, idekey))
+			registry.clients.DeleteClient(command.Idekey)
+			log.Println(fmt.Sprintf(`delete client with idekey "%s"`, command.Idekey))
 		} else {
-			log.Println(fmt.Sprintf(`attempt to delete idekey "%s"`, idekey))
-			err = registry.sendMessage(conn, command, idekey, fmt.Sprintf(`Idekey "%s" isn't registered'`, idekey))
-			if err != nil {
-				return err
-			}
+			log.Println(fmt.Sprintf(`attempt to delete idekey "%s"`, command.Idekey))
+			report(fmt.Sprintf(`idekey "%s" isn't registered'`, command.Idekey))
 			return nil
 		}
 	} else {
 		return errors.New(fmt.Sprintf(`undefined command "%s"`, command))
 	}
-	err = registry.sendMessage(conn, command, idekey, "")
+	err = registry.sendMessage(conn, command.Name, command.Idekey, "")
 	if err != nil {
 		return err
 	}
