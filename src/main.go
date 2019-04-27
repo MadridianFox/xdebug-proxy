@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+	"dbgp-proxy/src/proxy"
 	"log"
 	"net"
 	"os"
@@ -10,40 +10,45 @@ import (
 )
 
 func main() {
+	RunCommand(HandleProxyCommand, HandleInstallCommand)
+}
+
+func HandleProxyCommand(args *ProxyArgs) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 	tasks := &sync.WaitGroup{}
 
-	xdebugArgPtr := flag.String("xdebug", "0.0.0.0:9000", "ip:port for xdebug connections")
-	registryArgPtr := flag.String("registry", "0.0.0.0:9001", "ip:port for registry connections")
-	flag.Parse()
-
-	storage := NewClientList()
+	storage := proxy.NewClientList()
 
 	// start registry
-	registryAddress, err := net.ResolveTCPAddr("tcp", *registryArgPtr)
+	registryAddress, err := net.ResolveTCPAddr("tcp", args.RegistryAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	registryServer := NewServer("registry", registryAddress, tasks)
-	registryHandler := &RegistryHandler{storage}
-	go registryServer.listen(registryHandler)
+	registryServer := proxy.NewServer("registry", registryAddress, tasks)
+	registryHandler := proxy.NewRegistryHandler(storage)
+	go registryServer.Listen(registryHandler)
 
 	// start pipe
-	pipeAddress, err := net.ResolveTCPAddr("tcp", *xdebugArgPtr)
+	pipeAddress, err := net.ResolveTCPAddr("tcp", args.XdebugAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	proxyServer := NewServer("proxy", pipeAddress, tasks)
-	proxyHandler := &ProxyHandler{storage}
-	go proxyServer.listen(proxyHandler)
+	proxyServer := proxy.NewServer("proxy", pipeAddress, tasks)
+	proxyHandler := proxy.NewPipeHandler(storage)
+	go proxyServer.Listen(proxyHandler)
 
 	log.Println("dbgp proxy started")
 	// wait os signals
 	<-signals
 	log.Println("signal Ctrl+C")
-	proxyServer.stop = true
-	registryServer.stop = true
+	proxyServer.Stop()
+	registryServer.Stop()
 	tasks.Wait()
 	log.Println("dbgp proxy stopped")
+}
+
+//noinspection ALL
+func HandleInstallCommand(agrs *InstallArgs) {
+
 }

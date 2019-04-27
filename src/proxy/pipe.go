@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"bufio"
@@ -10,11 +10,15 @@ import (
 	"time"
 )
 
-type ProxyHandler struct {
+type PipeHandler struct {
 	clients *ClientList
 }
 
-func (proxy *ProxyHandler) Handle(conn net.Conn) {
+func NewPipeHandler(clients *ClientList) *PipeHandler {
+	return &PipeHandler{clients}
+}
+
+func (proxy *PipeHandler) Handle(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	length, err := reader.ReadBytes(0)
 	if err != nil {
@@ -39,7 +43,7 @@ func (proxy *ProxyHandler) Handle(conn net.Conn) {
 	}
 }
 
-func (proxy *ProxyHandler) sendAndPipe(server net.Conn, idekey string, initMessage []byte) error {
+func (proxy *PipeHandler) sendAndPipe(server net.Conn, idekey string, initMessage []byte) error {
 	clientAddress, ok := proxy.clients.FindClient(idekey)
 	if !ok {
 		return errors.New(`client with idekey "` + idekey + `" isn't registered`)

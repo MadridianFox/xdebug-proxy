@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"io"
@@ -28,7 +28,7 @@ func NewServer(name string, address *net.TCPAddr, group *sync.WaitGroup) *Server
 	}
 }
 
-func (server *Server) listen(handler ServerHandler) {
+func (server *Server) Listen(handler ServerHandler) {
 	server.group.Add(1)
 	defer server.group.Done()
 
@@ -55,6 +55,10 @@ func (server *Server) listen(handler ServerHandler) {
 		go server.handleConnection(conn, handler)
 	}
 	log.Printf(`shutdown %s server`, server.name)
+}
+
+func (server *Server) Stop() {
+	server.stop = true
 }
 
 func (server *Server) handleConnection(conn net.Conn, handler ServerHandler) {

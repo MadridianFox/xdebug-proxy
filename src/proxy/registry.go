@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"bufio"
@@ -12,6 +12,10 @@ import (
 
 type RegistryHandler struct {
 	clients *ClientList
+}
+
+func NewRegistryHandler(clients *ClientList) *RegistryHandler {
+	return &RegistryHandler{clients}
 }
 
 func (registry *RegistryHandler) Handle(conn net.Conn) {
