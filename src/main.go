@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -14,14 +15,25 @@ func main() {
 	signal.Notify(signals, os.Interrupt)
 	tasks := &sync.WaitGroup{}
 
-	xdebugArgPtr := flag.String("xdebug", "0.0.0.0:9000", "ip:port for xdebug connections")
-	registryArgPtr := flag.String("registry", "0.0.0.0:9001", "ip:port for registry connections")
+	configPathPtr := flag.String("config", "/etc/dbgp/config.yml", "path to config file")
 	flag.Parse()
 
-	storage := NewClientList()
+	configData, err := ioutil.ReadFile(*configPathPtr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	config, err := parseConfig(configData)
+	if err != nil {
+		log.Fatal(err)
+	}
 
+	storage := NewClientList()
+	err = storage.setFromConfig(config.Predefined)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// start registry
-	registryAddress, err := net.ResolveTCPAddr("tcp", *registryArgPtr)
+	registryAddress, err := net.ResolveTCPAddr("tcp", config.RegistryAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,7 +42,7 @@ func main() {
 	go registryServer.listen(registryHandler)
 
 	// start pipe
-	pipeAddress, err := net.ResolveTCPAddr("tcp", *xdebugArgPtr)
+	pipeAddress, err := net.ResolveTCPAddr("tcp", config.XdebugAddr)
 	if err != nil {
 		log.Fatal(err)
 	}

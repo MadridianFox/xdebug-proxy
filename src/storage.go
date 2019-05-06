@@ -24,6 +24,17 @@ func NewClientList() *ClientList {
 	return &ClientList{clients: map[string]*DbgpClient{}}
 }
 
+func (list *ClientList) setFromConfig(items []ConfigItem) error {
+	for _, item := range items {
+		host, port, err := net.SplitHostPort(item.Address)
+		if err != nil {
+			return err
+		}
+		list.AddClient(&DbgpClient{host, port, item.Idekey})
+	}
+	return nil
+}
+
 func (list *ClientList) AddClient(client *DbgpClient) {
 	list.Lock()
 	defer list.Unlock()
