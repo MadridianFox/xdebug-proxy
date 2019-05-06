@@ -16,8 +16,9 @@ type ProxyArgs struct {
 }
 
 type InstallArgs struct {
-	User  string
-	Group string
+	User       string
+	Group      string
+	OutputFile string
 }
 
 type ProxyHandler func(args *ProxyArgs)
@@ -31,6 +32,7 @@ func RunCommand(proxyHandler ProxyHandler, installHandler InstallHandler) {
 	installCommand := flag.NewFlagSet(InstallCommand, flag.ExitOnError)
 	userPtr := installCommand.String("user", "www-data", "user for proxy process")
 	groupPtr := installCommand.String("group", "www-data", "group for proxy process")
+	outputPtr := installCommand.String("out", "/etc/systemd/system/dbgp.service", "path to service unit file")
 
 	if len(os.Args) == 1 {
 		fmt.Println("usage: dbgp <command> [<args>]")
@@ -47,8 +49,9 @@ func RunCommand(proxyHandler ProxyHandler, installHandler InstallHandler) {
 			log.Fatal(err)
 		}
 		installHandler(&InstallArgs{
-			User:  *userPtr,
-			Group: *groupPtr,
+			User:       *userPtr,
+			Group:      *groupPtr,
+			OutputFile: *outputPtr,
 		})
 	case ProxyCommand:
 		err := proxyCommand.Parse(os.Args[2:])

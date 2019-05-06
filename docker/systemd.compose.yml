@@ -1,0 +1,14 @@
+version: '3'
+services:
+  proxy:
+    build:
+      context: ../
+      dockerfile: ./docker/proxy-systemd.dockerfile
+    tty: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    tmpfs:
+      - /run
+      - /run/lock
